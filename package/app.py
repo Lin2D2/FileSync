@@ -5,6 +5,7 @@ import asyncio
 import json
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+from watchdog.utils import dirsnapshot
 
 
 class App:
@@ -26,7 +27,27 @@ class App:
     @staticmethod
     async def init_handler(sync_folder_path, backup_folder_path):
         print(f"syncing: {sync_folder_path} to: {backup_folder_path}")
-        # TODO first sync up
+        sync_folder_snapshot = dirsnapshot.DirectorySnapshot(sync_folder_path, True)
+        backup_folder_snapshot = dirsnapshot.DirectorySnapshot(backup_folder_path, True)
+        sync_folder_snapshot_paths = sync_folder_snapshot.paths
+        backup_folder_snapshot_paths = backup_folder_snapshot.paths
+        sync_folder_snapshot_paths.remove(sync_folder_path)
+        backup_folder_snapshot_paths.remove(backup_folder_path)
+        print(sync_folder_snapshot_paths)
+        print(backup_folder_snapshot_paths)
+        # TODO not sure if sorted fixes the problem
+        # NOTE a folder has to be before the files it contains, else -> error
+        for element in sorted(sync_folder_snapshot_paths):
+            converted_path = element.replace(sync_folder_path, backup_folder_path)
+            if converted_path in backup_folder_snapshot_paths:
+                print("exist")
+            else:
+                if os.path.isdir(element):
+                    print("made dir")
+                    os.mkdir(converted_path)
+                else:
+                    print("copied file")
+                    shutil.copy2(element, converted_path)
         observer = Observer()
         event_handler = Handler(sync_folder_path, backup_folder_path)
         observer.schedule(event_handler, sync_folder_path, recursive=True)
