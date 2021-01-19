@@ -1,19 +1,18 @@
 import os
 import sys
-import time
 import shutil
 import asyncio
-from dotenv import load_dotenv
+import json
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 
 class App:
     def __init__(self):
-        load_dotenv()
         try:
-            self.syncFolderPath = os.getenv('SYNC_FOLDER_PATH')
-            self.backupFolderPath = os.getenv('BACKUP_FOLDER_PATH')
+            with open("settings.json", "r") as file:
+                contents = json.load(file)
+            self.Paths = contents["Paths"]
         except OSError:
             sys.exit("Failed to read SYNC_FOLDER_PATH and BACKUP_FOLDER_PATH")
 
@@ -21,7 +20,8 @@ class App:
         print("Start")
         event_loop = asyncio.get_event_loop()
         # TODO for loop to watch more Paths
-        event_loop.create_task(self.init_handler(self.syncFolderPath, self.backupFolderPath))
+        for Path in self.Paths:
+            event_loop.create_task(self.init_handler(Path["SYNC_FOLDER_PATH"], Path["BACKUP_FOLDER_PATH"]))
 
     @staticmethod
     async def init_handler(sync_folder_path, backup_folder_path):
