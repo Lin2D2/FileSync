@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import shutil
+import asyncio
 from dotenv import load_dotenv
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -15,29 +16,36 @@ class App:
             self.backupFolderPath = os.getenv('BACKUP_FOLDER_PATH')
         except OSError:
             sys.exit("Failed to read SYNC_FOLDER_PATH and BACKUP_FOLDER_PATH")
-        self.observer = Observer()
 
-    def start(self):
+    async def start(self):
         print("Start")
-        print(f"disk usage sync: {shutil.disk_usage(self.syncFolderPath)}")
-        print(f"disk usage backup: {shutil.disk_usage(self.backupFolderPath)}")
-        event_handler = Handler(self)
-        self.observer.schedule(event_handler, self.syncFolderPath, recursive=True)
-        self.observer.start()
+        event_loop = asyncio.get_event_loop()
+        # TODO for loop to watch more Paths
+        event_loop.create_task(self.init_handler(self.syncFolderPath, self.backupFolderPath))
+
+    @staticmethod
+    async def init_handler(sync_folder_path, backup_folder_path):
+        print(f"syncing: {sync_folder_path} to: {backup_folder_path}")
+        # TODO first sync up
+        observer = Observer()
+        event_handler = Handler(sync_folder_path, backup_folder_path)
+        observer.schedule(event_handler, sync_folder_path, recursive=True)
+        observer.start()
         try:
             while True:
                 # To keep Program running
-                time.sleep(5)
-        except:
-            self.observer.stop()
-            print("Error")
-
-        self.observer.join()
+                await asyncio.sleep(5)
+        except Exception as error:
+            observer.stop()
+            print(f"Error: {error}")
+        finally:
+            observer.join()
 
 
 class Handler(FileSystemEventHandler):
-    def __init__(self, parent):
-        self.parent = parent
+    def __init__(self, sync_folder_path, backup_folder_path):
+        self.syncFolderPath = sync_folder_path
+        self.backupFolderPath = backup_folder_path
 
     def on_any_event(self, event):
         if event.is_directory:
@@ -45,22 +53,22 @@ class Handler(FileSystemEventHandler):
         print(f"Event:{event.event_type}, Path:{event.src_path}")
 
     def on_moved(self, event):
-        shutil.move(self.parent.backupFolderPath + event.src_path.split(self.parent.syncFolderPath)[-1],
-                    self.parent.backupFolderPath + event.dest_path.split(self.parent.syncFolderPath)[-1])
+        shutil.move(self.backupFolderPath + event.src_path.split(self.syncFolderPath)[-1],
+                    self.backupFolderPath + event.dest_path.split(self.syncFolderPath)[-1])
 
     def on_created(self, event):
         print(f"created: {event.src_path}")
         if event.is_directory:
-            os.mkdir(self.parent.backupFolderPath + event.src_path.split(self.parent.syncFolderPath)[-1])
+            os.mkdir(self.backupFolderPath + event.src_path.split(self.syncFolderPath)[-1])
         else:
-            shutil.copy2(event.src_path, self.parent.backupFolderPath + event.src_path.split(self.parent.syncFolderPath)[-1])
+            shutil.copy2(event.src_path, self.backupFolderPath + event.src_path.split(self.syncFolderPath)[-1])
 
     def on_deleted(self, event):
         print(f"removed: {event.src_path}")
-        if os.path.isdir(self.parent.backupFolderPath + event.src_path.split(self.parent.syncFolderPath)[-1]):
-            shutil.rmtree(self.parent.backupFolderPath + event.src_path.split(self.parent.syncFolderPath)[-1])
+        if os.path.isdir(self.backupFolderPath + event.src_path.split(self.syncFolderPath)[-1]):
+            shutil.rmtree(self.backupFolderPath + event.src_path.split(self.syncFolderPath)[-1])
         else:
-            os.remove(self.parent.backupFolderPath + event.src_path.split(self.parent.syncFolderPath)[-1])
+            os.remove(self.backupFolderPath + event.src_path.split(self.syncFolderPath)[-1])
 
     def on_modified(self, event):
         pass
