@@ -2,12 +2,26 @@ import os
 import sys
 import shutil
 import json
+import logging
 from time import sleep
 from threading import Thread
 from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from watchdog.utils import dirsnapshot
+
+
+# create logger
+logging_time = logging.getLogger("main")
+logging_time.setLevel(logging.DEBUG)
+
+handler = logging.StreamHandler()
+handler.setLevel(logging.DEBUG)
+handler.setFormatter(logging.Formatter(
+    '[%(asctime)s] %(levelname)s in %(threadName)s: %(message)s',
+    "%Y-%m-%d %H:%M:%S"))
+
+logging.root.handlers = [handler]
 
 
 class App:
@@ -27,13 +41,13 @@ class App:
     def start(self):
         for Path in self.Paths:
             if os.path.exists(Path["SYNC_FOLDER_PATH"]) and os.path.exists(Path["BACKUP_FOLDER_PATH"]):
-                print(f"creating handler for {Path['SYNC_FOLDER_PATH']}")
+                logging_time.info(f"creating handler for {Path['SYNC_FOLDER_PATH']}")
                 self.init_handler(Path["SYNC_FOLDER_PATH"], Path["BACKUP_FOLDER_PATH"])
         while True:
             sleep(5)
 
     def init_handler(self, sync_folder_path, backup_folder_path):
-        print(f"syncing: {sync_folder_path} to: {backup_folder_path}")
+        logging_time.info(f"syncing: {sync_folder_path} to: {backup_folder_path}")
         sync_folder_snapshot = dirsnapshot.DirectorySnapshot(sync_folder_path, True)
         backup_folder_snapshot = dirsnapshot.DirectorySnapshot(backup_folder_path, True)
         sync_folder_snapshot_paths = sync_folder_snapshot.paths
@@ -44,20 +58,18 @@ class App:
         space_needed = sum(f.stat().st_size for f in Path(sync_folder_path).glob('**/*') if f.is_file()) // (2**30)
         total, used, space_available = shutil.disk_usage(backup_folder_path)
         space_available = space_available // (2**30)
-        print(f"space needed: {space_needed if space_needed != 0 else '<1'}GiB, "
-              f"space available: {space_available if space_available != 0 else '<1'}GiB")
+        logging_time.info(f"space needed: {space_needed if space_needed != 0 else '<1'}GiB, "
+                          f"space available: {space_available if space_available != 0 else '<1'}GiB\n")
         if space_needed < space_available:
             for element in sorted(sync_folder_snapshot_paths):
                 converted_path = element.replace(sync_folder_path, backup_folder_path)
                 if converted_path not in backup_folder_snapshot_paths:
                     if os.path.isdir(element):
-                        print("made dir")
                         os.mkdir(converted_path)
                     else:
-                        print("copied file")
                         shutil.copy2(element, converted_path)
         else:
-            print(f"not enough space, missing {(space_needed - space_available) // (2**30)}GiB")
+            logging_time.warning(f"not enough space, missing {(space_needed - space_available) // (2**30)}GiB\n")
         del sync_folder_snapshot
         del backup_folder_snapshot
         del sync_folder_snapshot_paths
@@ -70,7 +82,6 @@ class App:
         thread = Thread(target=observer.start)
         self.threads.append(thread)
         thread.start()
-        print("\n")
 
 
 class Handler(FileSystemEventHandler):
@@ -83,27 +94,31 @@ class Handler(FileSystemEventHandler):
     def on_any_event(self, event):
         if event.is_directory:
             return None
-        print(f"Event:{event.event_type}, Path:{event.src_path}")
+        logging_time.info(f"Event:{event.event_type}, Path:{event.src_path}")
 
     def on_moved(self, event):
         shutil.move(self.backupFolderPath + event.src_path.split(self.syncFolderPath)[-1],
                     self.backupFolderPath + event.dest_path.split(self.syncFolderPath)[-1])
 
     def on_created(self, event):
-        print(f"created: {event.src_path}")
+        logging_time.info(f"created: {event.src_path}")
         if event.is_directory:
             os.mkdir(self.backupFolderPath + event.src_path.split(self.syncFolderPath)[-1])
         else:
-            shutil.copy2(event.src_path, self.backupFolderPath + event.src_path.split(self.syncFolderPath)[-1])
+            try:
+                shutil.copy2(event.src_path, self.backupFolderPath + event.src_path.split(self.syncFolderPath)[-1])
+            except FileNotFoundError:
+                logging_time.warning(f"file not found: {event.src_path}")
 
     def on_deleted(self, event):
         # TODO add backup option
-        print(f"removed: {event.src_path}")
+        logging_time.info(f"removed: {event.src_path}")
         if os.path.isdir(self.backupFolderPath + event.src_path.split(self.syncFolderPath)[-1]):
             shutil.rmtree(self.backupFolderPath + event.src_path.split(self.syncFolderPath)[-1])
         else:
             os.remove(self.backupFolderPath + event.src_path.split(self.syncFolderPath)[-1])
 
     def on_modified(self, event):
-        pass
+        return
+        # logging_time.info("file modified")
         # TODO impl
