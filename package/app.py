@@ -61,13 +61,31 @@ class App:
         logging_time.info(f"space needed: {space_needed if space_needed != 0 else '<1'}GiB, "
                           f"space available: {space_available if space_available != 0 else '<1'}GiB\n")
         if space_needed < space_available:
-            for element in sorted(sync_folder_snapshot_paths):
+            element_count = len(sync_folder_snapshot_paths)
+            for index, element in enumerate(sorted(sync_folder_snapshot_paths)):
                 converted_path = element.replace(sync_folder_path, backup_folder_path)
+                # print(f"{int((index / element_count) * 100)}% ", end='')
+
+                percent = float(index+1) * 100 / element_count
+                arrow = '-' * int(percent / 100 * 20 - 1) + '>'
+                spaces = ' ' * (20 - len(arrow))
+                print('\rProgress: [%s%s] %d %%' % (arrow, spaces, percent), end="", flush=True)
+                # sleep(1 * 10 ** -30)
+                if percent == 100:
+                    print("\r\n")
+
                 if converted_path not in backup_folder_snapshot_paths:
                     if os.path.isdir(element):
                         os.mkdir(converted_path)
                     else:
-                        shutil.copy2(element, converted_path)
+                        try:
+                            shutil.copy2(element, converted_path)
+                        except PermissionError:
+                            logging_time.warning(f"\nPermissionError while copying: {element}")
+                        except FileExistsError:
+                            logging_time.warning(f"\nFileExistsError while copying: {element}")
+                        except OSError:
+                            logging_time.warning(f"\nOSError while copying: {element}")
         else:
             logging_time.warning(f"not enough space, missing {(space_needed - space_available) // (2**30)}GiB\n")
         del sync_folder_snapshot
