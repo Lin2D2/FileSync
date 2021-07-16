@@ -30,7 +30,7 @@ class App:
         try:
             with open("settings.json", "r") as file:
                 contents = json.load(file)
-            self.Paths = contents["Paths"]
+            self.paths = contents["Paths"]
         except OSError:
             sys.exit("Failed to read SYNC_FOLDER_PATH and BACKUP_FOLDER_PATH")
 
@@ -39,22 +39,22 @@ class App:
             thread.join()
 
     def start(self):
-        for Path in self.Paths:
-            if os.path.exists(Path["SYNC_FOLDER_PATH"]) and os.path.exists(Path["BACKUP_FOLDER_PATH"]):
-                logging_time.info(f"creating handler for {Path['SYNC_FOLDER_PATH']}")
-                self.init_handler(Path["SYNC_FOLDER_PATH"], Path["BACKUP_FOLDER_PATH"])
+        for path in self.paths:
+            if os.path.exists(path["SYNC_FOLDER_PATH"]) and os.path.exists(path["BACKUP_FOLDER_PATH"]):
+                logging_time.info(f"creating handler for {path['SYNC_FOLDER_PATH']}")
+                self.init_handler(path["SYNC_FOLDER_PATH"], path["BACKUP_FOLDER_PATH"])
         while True:
             sleep(5)
 
     def init_handler(self, sync_folder_path, backup_folder_path):
         logging_time.info(f"syncing: {sync_folder_path} to: {backup_folder_path}")
+        # TODO don't use snapshot, but shot loop over the paths with walk methode
         sync_folder_snapshot = dirsnapshot.DirectorySnapshot(sync_folder_path, True)
         backup_folder_snapshot = dirsnapshot.DirectorySnapshot(backup_folder_path, True)
         sync_folder_snapshot_paths = sync_folder_snapshot.paths
         backup_folder_snapshot_paths = backup_folder_snapshot.paths
         sync_folder_snapshot_paths.remove(sync_folder_path)
         backup_folder_snapshot_paths.remove(backup_folder_path)
-        # TODO check if enough space is available before copying
         space_needed = sum(f.stat().st_size for f in Path(sync_folder_path).glob('**/*') if f.is_file()) // (2**30)
         total, used, space_available = shutil.disk_usage(backup_folder_path)
         space_available = space_available // (2**30)
@@ -103,7 +103,6 @@ class App:
 
 
 class Handler(FileSystemEventHandler):
-    # TODO impl logging to show thread id on log
     def __init__(self, sync_folder_path, backup_folder_path, backup_driver_available_space):
         self.syncFolderPath = sync_folder_path
         self.backupFolderPath = backup_folder_path
@@ -119,6 +118,7 @@ class Handler(FileSystemEventHandler):
                     self.backupFolderPath + event.dest_path.split(self.syncFolderPath)[-1])
 
     def on_created(self, event):
+        # TODO check if enough space is available before copying
         logging_time.info(f"created: {event.src_path}")
         if event.is_directory:
             os.mkdir(self.backupFolderPath + event.src_path.split(self.syncFolderPath)[-1])
@@ -140,3 +140,4 @@ class Handler(FileSystemEventHandler):
         return
         # logging_time.info("file modified")
         # TODO impl
+    # TODO check if enough space is available before copying
